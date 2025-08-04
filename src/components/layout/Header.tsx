@@ -16,7 +16,7 @@ export function Header({ title, onMenuClick }: HeaderProps) {
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Mobile menu button */}
-          <div className="flex items-center lg:hidden">
+          <div className="flex items-center hidden">
             <Button
               variant="ghost"
               size="sm"

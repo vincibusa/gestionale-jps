@@ -8,7 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Euro, 
   TrendingUp, 
@@ -20,7 +22,9 @@ import {
   ChevronLeft,
   ChevronRight,
   History,
-  CreditCard
+  CreditCard,
+  Plus,
+  Edit
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Currency } from '@/components/ui/currency';
@@ -37,10 +41,11 @@ import {
 export default function ContantiPage() {
   const [cassaStatus, setCassaStatus] = useState<StatoCassa | null>(null);
   const [fondiStorici, setFondiStorici] = useState<FondoCassa[]>([]);
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [showMovimentoForm, setShowMovimentoForm] = useState(false);
-  const [showChiusuraForm, setShowChiusuraForm] = useState(false);
+  const [showMovimentoModal, setShowMovimentoModal] = useState(false);
+  const [showChiusuraModal, setShowChiusuraModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
   const [movimentoForm, setMovimentoForm] = useState({
@@ -68,6 +73,11 @@ export default function ContantiPage() {
       ]);
       setCassaStatus(statoData);
       setFondiStorici(fondiData);
+      
+      // Aggiorna le date disponibili
+      const today = new Date().toISOString().split('T')[0];
+      const dates = [...new Set([today, ...fondiData.map(f => f.data)])].sort((a, b) => b.localeCompare(a));
+      setAvailableDates(dates);
     } catch (error) {
       console.error('Errore nel caricamento dati cassa:', error);
     } finally {
@@ -93,7 +103,7 @@ export default function ContantiPage() {
         descrizione: '',
         operatore: 'Giuseppe'
       });
-      setShowMovimentoForm(false);
+      setShowMovimentoModal(false);
       await loadData();
     } catch (error) {
       console.error('Errore nel movimento:', error);
@@ -115,7 +125,7 @@ export default function ContantiPage() {
       
       if (success) {
         setChiusuraForm({ fondo_effettivo: '', note: '' });
-        setShowChiusuraForm(false);
+        setShowChiusuraModal(false);
         await loadData();
       } else {
         alert('Errore nella chiusura cassa');
@@ -146,13 +156,12 @@ export default function ContantiPage() {
   };
 
   const navigateDate = (direction: 'prev' | 'next') => {
-    const currentDate = new Date(selectedDate);
-    if (direction === 'prev') {
-      currentDate.setDate(currentDate.getDate() - 1);
-    } else {
-      currentDate.setDate(currentDate.getDate() + 1);
+    const currentIndex = availableDates.indexOf(selectedDate);
+    if (direction === 'prev' && currentIndex < availableDates.length - 1) {
+      setSelectedDate(availableDates[currentIndex + 1]);
+    } else if (direction === 'next' && currentIndex > 0) {
+      setSelectedDate(availableDates[currentIndex - 1]);
     }
-    setSelectedDate(currentDate.toISOString().split('T')[0]);
   };
 
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
@@ -160,44 +169,53 @@ export default function ContantiPage() {
   return (
     <ResponsiveLayout title="Gestione Cassa">
       <div className="p-4 lg:p-8 space-y-6">
-        {/* Navigazione Date */}
-        <Card className="card-elevated">
-          <CardContent className="p-4">
+        {/* Date Navigation - Mobile First */}
+        <Card className="card-elevated border-blue-200">
+          <CardContent className="p-4 flex items-center justify-between">
             <div className="flex items-center justify-between">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigateDate('prev')}
-                className="h-10"
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Precedente
-              </Button>
-              
-              <div className="flex items-center space-x-3">
-                <Calendar className="h-5 w-5 text-gray-500" />
-                <div className="text-center">
-                  <div className="font-bold text-lg">{formatDate(selectedDate)}</div>
-                  {isToday && <Badge className="text-xs">Oggi</Badge>}
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                  <Calendar className="h-4 w-4 text-white" />
                 </div>
+                <span className="font-semibold text-gray-700">Filtro Data</span>
               </div>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigateDate('next')}
-                className="h-10"
-                disabled={selectedDate >= new Date().toISOString().split('T')[0]}
-              >
-                Successivo
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
+              {isToday && (
+                <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
+                  Oggi
+                </Badge>
+              )}
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <div className="flex-1">
+                <Select value={selectedDate} onValueChange={setSelectedDate}>
+                  <SelectTrigger className="h-10 text-base font-medium">
+                    <SelectValue>
+                      {formatDate(selectedDate)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    {availableDates.map((date) => (
+                      <SelectItem key={date} value={date}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{formatDate(date)}</span>
+                          {date === new Date().toISOString().split('T')[0] && (
+                            <Badge className="ml-2 text-xs bg-green-100 text-green-700">
+                              Oggi
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="oggi" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="oggi" className="w-full mt-10">
+          <TabsList className="grid w-full grid-cols-2 bg-white">
             <TabsTrigger value="oggi">Gestione Oggi</TabsTrigger>
             <TabsTrigger value="storico">Storico</TabsTrigger>
           </TabsList>
@@ -214,119 +232,123 @@ export default function ContantiPage() {
               </div>
             ) : (
               <>
-                {/* Status Cassa */}
-                <Card className="card-elevated animate-scale-in">
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span className="flex items-center">
-                        <Euro className="h-5 w-5 mr-2 text-yellow-600" />
-                        Stato Cassa - {formatDate(selectedDate)}
-                      </span>
-                      <Badge variant={cassaStatus?.aperta ? "default" : "secondary"}>
-                        <div className="flex items-center">
-                          {cassaStatus?.aperta ? (
-                            <Unlock className="h-3 w-3 mr-1" />
-                          ) : (
-                            <Lock className="h-3 w-3 mr-1" />
-                          )}
-                          {cassaStatus?.aperta ? 'Aperta' : 'Chiusa'}
-                        </div>
-                      </Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-3xl font-bold text-blue-600">
-                          <Currency amount={cassaStatus?.fondo_teorico || 0} />
-                        </div>
-                        <p className="text-sm text-gray-500">Fondo teorico</p>
-                      </div>
-                      {cassaStatus?.fondo_effettivo !== undefined && (
-                        <div>
-                          <div className="text-2xl font-bold text-green-600">
-                            <Currency amount={cassaStatus.fondo_effettivo} />
+                {/* Header Statistics - Mobile Optimized */}
+                <div className="grid grid-cols-1 gap-4 ">
+                  <Card className="card-elevated bg-gradient-to-br from-green-50 via-blue-50 to-green-50 border-green-200">
+                    <CardContent className="p-4 lg:p-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                            <Euro className="h-5 w-5 text-white" />
                           </div>
-                          <p className="text-sm text-gray-500">Fondo effettivo</p>
-                          {cassaStatus.differenza !== undefined && cassaStatus.differenza !== 0 && (
-                            <div className={`text-sm font-medium ${cassaStatus.differenza > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {cassaStatus.differenza > 0 ? '+' : ''}<Currency amount={cassaStatus.differenza} />
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">
+                              Stato Cassa - {formatDate(selectedDate)}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {cassaStatus?.aperta ? 'Cassa aperta' : 'Cassa chiusa'}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge 
+                          className={`px-3 py-1 ${
+                            cassaStatus?.aperta 
+                              ? 'bg-green-100 text-green-800 border-green-200' 
+                              : 'bg-gray-100 text-gray-800 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-1">
+                            {cassaStatus?.aperta ? (
+                              <Unlock className="h-3 w-3" />
+                            ) : (
+                              <Lock className="h-3 w-3" />
+                            )}
+                            <span>{cassaStatus?.aperta ? 'Aperta' : 'Chiusa'}</span>
+                          </div>
+                        </Badge>
+                      </div>
+                      
+                      {loading ? (
+                        <div className="h-10 bg-gray-200 rounded-lg skeleton"></div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-2xl lg:text-3xl font-bold text-blue-700">
+                              <Currency amount={cassaStatus?.fondo_teorico || 0} />
+                            </div>
+                            <p className="text-sm text-gray-500">Fondo teorico</p>
+                          </div>
+                          {cassaStatus?.fondo_effettivo !== undefined && (
+                            <div>
+                              <div className="text-xl lg:text-2xl font-bold text-green-700">
+                                <Currency amount={cassaStatus.fondo_effettivo} />
+                              </div>
+                              <p className="text-sm text-gray-500">Fondo effettivo</p>
+                              {cassaStatus.differenza !== undefined && cassaStatus.differenza !== 0 && (
+                                <div className={`text-sm font-medium ${
+                                  cassaStatus.differenza > 0 ? 'text-green-600' : 'text-red-600'
+                                }`}>
+                                  {cassaStatus.differenza > 0 ? '+' : ''}<Currency amount={cassaStatus.differenza} />
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
                       )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Dettagli Movimento */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                  <Card className="card-elevated animate-scale-in">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-gray-600">
-                        Fondo Iniziale
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xl font-bold">
-                        <Currency amount={cassaStatus?.fondo_iniziale || 0} />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="card-elevated animate-scale-in">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-gray-600">
-                        Vendite Contanti
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xl font-bold text-green-600">
-                        +<Currency amount={cassaStatus?.vendite_contanti || 0} />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="card-elevated animate-scale-in">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-gray-600 flex items-center">
-                        <CreditCard className="h-3 w-3 mr-1" />
-                        Vendite Carta
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xl font-bold text-blue-600">
-                        +<Currency amount={cassaStatus?.vendite_carta || 0} />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="card-elevated animate-scale-in">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-gray-600">
-                        Altre Entrate
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xl font-bold text-green-600">
-                        +<Currency amount={cassaStatus?.altre_entrate || 0} />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="card-elevated animate-scale-in">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-gray-600">
-                        Uscite
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-xl font-bold text-red-600">
-                        -<Currency amount={cassaStatus?.uscite || 0} />
-                      </div>
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Quick Stats Row for Selected Date */}
+                {!loading && (
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
+                    <Card className="card-elevated bg-orange-50 border-orange-200">
+                      <CardContent className="p-3 text-center">
+                        <div className="text-lg font-bold text-orange-700">
+                          <Currency amount={cassaStatus?.fondo_iniziale || 0} />
+                        </div>
+                        <p className="text-xs text-orange-600">Fondo Iniziale</p>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card className="card-elevated bg-green-50 border-green-200">
+                      <CardContent className="p-3 text-center">
+                        <div className="text-lg font-bold text-green-700">
+                          <Currency amount={cassaStatus?.vendite_contanti || 0} />
+                        </div>
+                        <p className="text-xs text-green-600">Contanti</p>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card className="card-elevated bg-blue-50 border-blue-200">
+                      <CardContent className="p-3 text-center">
+                        <div className="text-lg font-bold text-blue-700 flex items-center justify-center space-x-1">
+                          <CreditCard className="h-3 w-3" />
+                          <Currency amount={cassaStatus?.vendite_carta || 0} />
+                        </div>
+                        <p className="text-xs text-blue-600">Carta</p>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card className="card-elevated bg-purple-50 border-purple-200">
+                      <CardContent className="p-3 text-center">
+                        <div className="text-lg font-bold text-purple-700">
+                          <Currency amount={cassaStatus?.altre_entrate || 0} />
+                        </div>
+                        <p className="text-xs text-purple-600">Altre Entrate</p>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card className="card-elevated bg-red-50 border-red-200">
+                      <CardContent className="p-3 text-center">
+                        <div className="text-lg font-bold text-red-700">
+                          <Currency amount={cassaStatus?.uscite || 0} />
+                        </div>
+                        <p className="text-xs text-red-600">Uscite</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
 
                 {/* Azioni */}
                 {isToday && (
@@ -337,7 +359,7 @@ export default function ContantiPage() {
                           className="h-12 btn-success"
                           onClick={() => {
                             setMovimentoForm(prev => ({...prev, tipo: 'entrata'}));
-                            setShowMovimentoForm(true);
+                            setShowMovimentoModal(true);
                           }}
                         >
                           <TrendingUp className="h-5 w-5 mr-2" />
@@ -349,7 +371,7 @@ export default function ContantiPage() {
                           className="h-12 border-red-200 text-red-600 hover:bg-red-50"
                           onClick={() => {
                             setMovimentoForm(prev => ({...prev, tipo: 'uscita'}));
-                            setShowMovimentoForm(true);
+                            setShowMovimentoModal(true);
                           }}
                         >
                           <TrendingDown className="h-5 w-5 mr-2" />
@@ -359,7 +381,7 @@ export default function ContantiPage() {
                         <Button 
                           variant="destructive" 
                           className="h-12"
-                          onClick={() => setShowChiusuraForm(true)}
+                          onClick={() => setShowChiusuraModal(true)}
                         >
                           <Lock className="h-5 w-5 mr-2" />
                           Chiudi Cassa
@@ -423,6 +445,38 @@ export default function ContantiPage() {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* Floating Action Buttons - Mobile */}
+                {isToday && cassaStatus?.aperta && (
+                  <>
+                    <div className="lg:hidden fixed bottom-32 right-4 z-40">
+                      <Button 
+                        onClick={() => {
+                          setMovimentoForm(prev => ({...prev, tipo: 'entrata'}));
+                          setShowMovimentoModal(true);
+                        }}
+                        className="w-12 h-12 rounded-full btn-success shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110 mb-3"
+                        disabled={loading}
+                      >
+                        <TrendingUp className="h-5 w-5" />
+                      </Button>
+                    </div>
+                    
+                    <div className="lg:hidden fixed bottom-20 right-4 z-40">
+                      <Button 
+                        onClick={() => {
+                          setMovimentoForm(prev => ({...prev, tipo: 'uscita'}));
+                          setShowMovimentoModal(true);
+                        }}
+                        variant="outline"
+                        className="w-12 h-12 rounded-full border-red-200 text-red-600 hover:bg-red-50 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110 mb-3"
+                        disabled={loading}
+                      >
+                        <TrendingDown className="h-5 w-5" />
+                      </Button>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </TabsContent>
@@ -483,111 +537,203 @@ export default function ContantiPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Form Movimento */}
-        {showMovimentoForm && (
-          <Card className="card-elevated animate-scale-in">
-            <CardHeader>
-              <CardTitle>
-                {movimentoForm.tipo === 'entrata' ? 'Registra Entrata' : 'Registra Uscita'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleMovimento} className="space-y-4">
-                <div>
-                  <Label htmlFor="importo">Importo (€)</Label>
-                  <Input
-                    id="importo"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={movimentoForm.importo}
-                    onChange={(e) => setMovimentoForm(prev => ({...prev, importo: e.target.value}))}
-                    required
-                  />
+        {/* Modal Movimento Contanti */}
+        <Dialog open={showMovimentoModal} onOpenChange={setShowMovimentoModal}>
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto bg-white">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2 text-xl">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                  movimentoForm.tipo === 'entrata' 
+                    ? 'bg-gradient-to-br from-green-500 to-green-600' 
+                    : 'bg-gradient-to-br from-red-500 to-red-600'
+                }`}>
+                  {movimentoForm.tipo === 'entrata' ? (
+                    <TrendingUp className="h-4 w-4 text-white" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-white" />
+                  )}
                 </div>
-                <div>
-                  <Label htmlFor="descrizione">Descrizione</Label>
-                  <Input
-                    id="descrizione"
-                    placeholder="Descrizione del movimento..."
-                    value={movimentoForm.descrizione}
-                    onChange={(e) => setMovimentoForm(prev => ({...prev, descrizione: e.target.value}))}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="operatore">Operatore</Label>
-                  <Input
-                    id="operatore"
-                    value={movimentoForm.operatore}
-                    onChange={(e) => setMovimentoForm(prev => ({...prev, operatore: e.target.value}))}
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <Button type="submit" className="flex-1 btn-success" disabled={submitting}>
-                    {submitting ? 'Salvando...' : 'Salva Movimento'}
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setShowMovimentoForm(false)}
-                    disabled={submitting}
-                  >
-                    Annulla
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+                <span>
+                  {movimentoForm.tipo === 'entrata' ? 'Registra Entrata Contanti' : 'Registra Uscita Contanti'}
+                </span>
+              </DialogTitle>
+            </DialogHeader>
 
-        {/* Form Chiusura */}
-        {showChiusuraForm && (
-          <Card className="card-elevated animate-scale-in">
-            <CardHeader>
-              <CardTitle>Chiusura Cassa</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleChiusura} className="space-y-4">
-                <div>
-                  <Label htmlFor="fondo_effettivo">Fondo Effettivo (€)</Label>
-                  <Input
-                    id="fondo_effettivo"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={chiusuraForm.fondo_effettivo}
-                    onChange={(e) => setChiusuraForm(prev => ({...prev, fondo_effettivo: e.target.value}))}
-                    required
-                  />
+            <form onSubmit={handleMovimento} className="space-y-5">
+              <div>
+                <Label htmlFor="importo" className="text-sm font-semibold text-gray-700 mb-2 block">
+                  💰 Importo (€)
+                </Label>
+                <Input
+                  id="importo"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  className="h-12 text-base text-right font-bold border-2 border-gray-200 focus:border-green-400 focus:ring-2 focus:ring-green-200 rounded-lg"
+                  value={movimentoForm.importo}
+                  onChange={(e) => setMovimentoForm(prev => ({...prev, importo: e.target.value}))}
+                  required
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="descrizione" className="text-sm font-semibold text-gray-700 mb-2 block">
+                  📝 Descrizione
+                </Label>
+                <Input
+                  id="descrizione"
+                  placeholder="Es: Spese varie, Acquisto prodotti, Pagamento fornitore..."
+                  className="h-12 text-base border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 rounded-lg"
+                  value={movimentoForm.descrizione}
+                  onChange={(e) => setMovimentoForm(prev => ({...prev, descrizione: e.target.value}))}
+                  required
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="operatore" className="text-sm font-semibold text-gray-700 mb-2 block">
+                  👤 Operatore
+                </Label>
+                <Input
+                  id="operatore"
+                  placeholder="Nome operatore"
+                  className="h-12 text-base border-2 border-gray-200 focus:border-purple-400 focus:ring-2 focus:ring-purple-200 rounded-lg"
+                  value={movimentoForm.operatore}
+                  onChange={(e) => setMovimentoForm(prev => ({...prev, operatore: e.target.value}))}
+                />
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
+                <Button 
+                  type="submit" 
+                  className={`flex-1 h-12 text-base font-semibold shadow-lg hover:shadow-xl transition-all duration-200 ${
+                    movimentoForm.tipo === 'entrata' ? 'btn-success' : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Salvando...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      {movimentoForm.tipo === 'entrata' ? (
+                        <TrendingUp className="h-4 w-4" />
+                      ) : (
+                        <TrendingDown className="h-4 w-4" />
+                      )}
+                      <span>Salva {movimentoForm.tipo === 'entrata' ? 'Entrata' : 'Uscita'}</span>
+                    </div>
+                  )}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="h-12 text-base font-medium border-2 hover:bg-gray-50"
+                  onClick={() => setShowMovimentoModal(false)}
+                  disabled={submitting}
+                >
+                  Annulla
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal Chiusura Cassa */}
+        <Dialog open={showChiusuraModal} onOpenChange={setShowChiusuraModal}>
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto bg-white">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2 text-xl">
+                <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center">
+                  <Lock className="h-4 w-4 text-white" />
                 </div>
-                <div>
-                  <Label htmlFor="note">Note (opzionale)</Label>
-                  <Textarea
-                    id="note"
-                    placeholder="Note sulla chiusura..."
-                    value={chiusuraForm.note}
-                    onChange={(e) => setChiusuraForm(prev => ({...prev, note: e.target.value}))}
-                    rows={3}
-                  />
+                <span>Chiusura Cassa</span>
+              </DialogTitle>
+            </DialogHeader>
+
+            <form onSubmit={handleChiusura} className="space-y-5">
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Euro className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-700">Fondo Teorico</span>
                 </div>
-                <div className="flex gap-3">
-                  <Button type="submit" variant="destructive" className="flex-1" disabled={submitting}>
-                    {submitting ? 'Chiudendo...' : 'Chiudi Cassa'}
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setShowChiusuraForm(false)}
-                    disabled={submitting}
-                  >
-                    Annulla
-                  </Button>
+                <div className="text-2xl font-bold text-blue-700">
+                  <Currency amount={cassaStatus?.fondo_teorico || 0} />
                 </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+              </div>
+              
+              <div>
+                <Label htmlFor="fondo_effettivo" className="text-sm font-semibold text-gray-700 mb-2 block">
+                  💰 Fondo Effettivo (€)
+                </Label>
+                <Input
+                  id="fondo_effettivo"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  className="h-12 text-base text-right font-bold border-2 border-gray-200 focus:border-green-400 focus:ring-2 focus:ring-green-200 rounded-lg"
+                  value={chiusuraForm.fondo_effettivo}
+                  onChange={(e) => setChiusuraForm(prev => ({...prev, fondo_effettivo: e.target.value}))}
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Inserisci l'importo effettivamente presente in cassa
+                </p>
+              </div>
+              
+              <div>
+                <Label htmlFor="note" className="text-sm font-semibold text-gray-700 mb-2 block">
+                  📋 Note <span className="text-gray-500 font-normal text-xs">(opzionale)</span>
+                </Label>
+                <Textarea
+                  id="note"
+                  placeholder="Note sulla chiusura, eventuali anomalie, osservazioni..."
+                  className="text-base border-2 border-gray-200 focus:border-purple-400 focus:ring-2 focus:ring-purple-200 resize-none rounded-lg"
+                  value={chiusuraForm.note}
+                  onChange={(e) => setChiusuraForm(prev => ({...prev, note: e.target.value}))}
+                  rows={3}
+                />
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
+                <Button 
+                  type="submit" 
+                  variant="destructive" 
+                  className="flex-1 h-12 text-base font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Chiudendo...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <Lock className="h-4 w-4" />
+                      <span>Chiudi Cassa</span>
+                    </div>
+                  )}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="h-12 text-base font-medium border-2 hover:bg-gray-50"
+                  onClick={() => setShowChiusuraModal(false)}
+                  disabled={submitting}
+                >
+                  Annulla
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Padding bottom per floating buttons mobile */}
+        <div className="h-24 lg:h-0"></div>
       </div>
     </ResponsiveLayout>
   );

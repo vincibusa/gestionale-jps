@@ -227,8 +227,8 @@ export default function POSPage() {
         </Card>
 
         {/* Header Statistics - Mobile Optimized */}
-        <div className="grid grid-cols-1 gap-4">
-          <Card className="card-elevated bg-gradient-to-br from-green-50 via-blue-50 to-green-50 border-green-200">
+        <div className="grid grid-cols-1 gap-4 mt-10">
+          <Card className="card-elevated bg-gradient-to-br from-green-50 via-blue-50 to-green-50 border-green-200 ">
             <CardContent className="p-4 lg:p-6">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
@@ -295,7 +295,7 @@ export default function POSPage() {
         {/* Floating Action Button - Mobile */}
         <div className="lg:hidden fixed bottom-20 right-4 z-40">
           <Button 
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => setShowModal(true)}
             className="w-14 h-14 rounded-full btn-warm shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110"
             disabled={loading}
           >
@@ -306,7 +306,7 @@ export default function POSPage() {
         {/* Desktop Add Button */}
         <div className="hidden lg:block">
           <Button 
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => setShowModal(true)}
             className="w-full h-12 text-lg btn-warm"
             size="lg"
             disabled={loading}
@@ -317,124 +317,112 @@ export default function POSPage() {
         </div>
 
         {/* Form Nuovo/Modifica Pagamento - Mobile Optimized */}
-        {showForm && (
-          <Card className="card-elevated animate-scale-in border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-yellow-50">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center justify-between text-lg">
-                <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
-                    {editingId ? <Edit className="h-4 w-4 text-white" /> : <Plus className="h-4 w-4 text-white" />}
-                  </div>
-                  <span className="text-gray-800">
-                    {editingId ? 'Modifica Pagamento' : 'Nuovo Pagamento'}
-                  </span>
+        <Dialog open={showModal} onOpenChange={setShowModal}>
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto bg-white">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2 text-xl">
+                <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
+                  {editingId ? <Edit className="h-4 w-4 text-white" /> : <Plus className="h-4 w-4 text-white" />}
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={handleCancel}
-                  className="h-8 w-8 p-0 hover:bg-red-100 rounded-full"
-                >
-                  <X className="h-4 w-4 text-gray-600" />
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            
-            <CardContent className="pt-0">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="data_pagamento" className="text-sm font-semibold text-gray-700">
-                      Data Pagamento
-                    </Label>
-                    <Input
-                      id="data_pagamento"
-                      type="date"
-                      className="form-input h-12 text-base border-gray-300 focus:border-orange-400 focus:ring-orange-200"
-                      value={formData.data_pagamento}
-                      onChange={(e) => setFormData({...formData, data_pagamento: e.target.value})}
-                      required
-                    />
-                  </div>
+                <span>
+                  {editingId ? 'Modifica Pagamento POS' : 'Nuovo Pagamento POS'}
+                </span>
+              </DialogTitle>
+            </DialogHeader>
 
-                  <div>
-                    <Label htmlFor="importo" className="text-sm font-semibold text-gray-700">
-                      Importo (€)
-                    </Label>
-                    <Input
-                      id="importo"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      className="form-input h-12 text-base text-right font-bold border-gray-300 focus:border-green-400 focus:ring-green-200"
-                      value={formData.importo}
-                      onChange={(e) => setFormData({...formData, importo: e.target.value})}
-                      required
-                    />
-                  </div>
-                </div>
-
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="descrizione" className="text-sm font-semibold text-gray-700">
-                    Descrizione
+                  <Label htmlFor="data_pagamento" className="text-sm font-semibold text-gray-700 mb-2 block">
+                    📅 Data Pagamento
                   </Label>
                   <Input
-                    id="descrizione"
-                    placeholder="Es: Vendita banco, Ordine asporto, Catering..."
-                    className="form-input h-12 text-base border-gray-300 focus:border-blue-400 focus:ring-blue-200"
-                    value={formData.descrizione}
-                    onChange={(e) => setFormData({...formData, descrizione: e.target.value})}
+                    id="data_pagamento"
+                    type="date"
+                    className="h-12 text-base border-2 border-gray-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-200 rounded-lg"
+                    value={formData.data_pagamento}
+                    onChange={(e) => setFormData({...formData, data_pagamento: e.target.value})}
                     required
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="note" className="text-sm font-semibold text-gray-700">
-                    Note <span className="text-gray-500 font-normal">(opzionale)</span>
+                  <Label htmlFor="importo" className="text-sm font-semibold text-gray-700 mb-2 block">
+                    💰 Importo (€)
                   </Label>
-                  <Textarea
-                    id="note"
-                    placeholder="Note aggiuntive, informazioni cliente..."
-                    className="form-input text-base border-gray-300 focus:border-purple-400 focus:ring-purple-200 resize-none"
-                    value={formData.note}
-                    onChange={(e) => setFormData({...formData, note: e.target.value})}
-                    rows={3}
+                  <Input
+                    id="importo"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    className="h-12 text-base text-right font-bold border-2 border-gray-200 focus:border-green-400 focus:ring-2 focus:ring-green-200 rounded-lg"
+                    value={formData.importo}
+                    onChange={(e) => setFormData({...formData, importo: e.target.value})}
+                    required
                   />
                 </div>
+              </div>
 
-                <div className="flex flex-col lg:flex-row gap-3 pt-4 border-t border-orange-200">
-                  <Button 
-                    type="submit" 
-                    className="flex-1 h-12 lg:h-11 text-base font-semibold btn-success shadow-lg hover:shadow-xl transition-all duration-200"
-                    disabled={submitting}
-                  >
-                    {submitting ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>{editingId ? 'Aggiornando...' : 'Salvando...'}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2">
-                        {editingId ? <Edit className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                        <span>{editingId ? 'Aggiorna Pagamento' : 'Salva Pagamento'}</span>
-                      </div>
-                    )}
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="h-12 lg:h-11 text-base font-medium border-2 hover:bg-gray-50"
-                    onClick={handleCancel}
-                    disabled={submitting}
-                  >
-                    Annulla
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+              <div>
+                <Label htmlFor="descrizione" className="text-sm font-semibold text-gray-700 mb-2 block">
+                  📝 Descrizione
+                </Label>
+                <Input
+                  id="descrizione"
+                  placeholder="Es: Vendita banco, Ordine asporto, Catering..."
+                  className="h-12 text-base border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 rounded-lg"
+                  value={formData.descrizione}
+                  onChange={(e) => setFormData({...formData, descrizione: e.target.value})}
+                  required
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="note" className="text-sm font-semibold text-gray-700 mb-2 block">
+                  💭 Note <span className="text-gray-500 font-normal text-xs">(opzionale)</span>
+                </Label>
+                <Textarea
+                  id="note"
+                  placeholder="Note aggiuntive, informazioni cliente..."
+                  className="text-base border-2 border-gray-200 focus:border-purple-400 focus:ring-2 focus:ring-purple-200 resize-none rounded-lg"
+                  value={formData.note}
+                  onChange={(e) => setFormData({...formData, note: e.target.value})}
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-gray-200">
+                <Button 
+                  type="submit" 
+                  className="flex-1 h-12 text-base font-semibold btn-success shadow-lg hover:shadow-xl transition-all duration-200"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>{editingId ? 'Aggiornando...' : 'Salvando...'}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      {editingId ? <Edit className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                      <span>{editingId ? 'Aggiorna Pagamento' : 'Salva Pagamento'}</span>
+                    </div>
+                  )}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="h-12 text-base font-medium border-2 hover:bg-gray-50"
+                  onClick={handleCancel}
+                  disabled={submitting}
+                >
+                  Annulla
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Lista Pagamenti - Mobile First */}
         <Card className="card-elevated border-slate-200">
@@ -481,7 +469,7 @@ export default function POSPage() {
                     <p className="font-semibold text-gray-700 mb-2">Nessun pagamento POS</p>
                     <p className="text-sm text-gray-500 mb-4">Inizia registrando il primo pagamento con carta</p>
                     <Button 
-                      onClick={() => setShowForm(true)}
+                      onClick={() => setShowModal(true)}
                       className="btn-warm"
                       size="sm"
                     >

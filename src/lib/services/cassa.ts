@@ -123,19 +123,18 @@ export async function getStatoCassaCompleto(data: string): Promise<StatoCassa> {
       getTotalePOSByData(data)
     ]);
 
-    // Calcola totali dai movimenti se il fondo non esiste
-    const fondoIniziale = fondoCassa?.fondo_iniziale || 
-      movimentiContanti.find(m => m.tipo === 'fondo_iniziale')?.importo || 0;
+    // Calcola sempre i totali dai movimenti per essere sicuri
+    const fondoIniziale = movimentiContanti.find(m => m.tipo === 'fondo_iniziale')?.importo || 
+      fondoCassa?.fondo_iniziale || 0;
     
-    const venditeContanti = fondoCassa?.vendite_contanti || 
-      movimentiContanti
-        .filter(m => m.tipo === 'entrata')
-        .reduce((sum, m) => sum + m.importo, 0);
+    const venditeContanti = movimentiContanti
+      .filter(m => m.tipo === 'entrata')
+      .reduce((sum, m) => sum + m.importo, 0);
     
-    const uscite = fondoCassa?.uscite || 
-      movimentiContanti
-        .filter(m => m.tipo === 'uscita')
-        .reduce((sum, m) => sum + m.importo, 0);
+    const uscite = movimentiContanti
+      .filter(m => m.tipo === 'uscita')
+      .reduce((sum, m) => sum + m.importo, 0);
+    
 
     const venditeCarti = fondoCassa?.vendite_carta || totalePOS;
     const altreEntrate = fondoCassa?.altre_entrate || 0;
@@ -195,7 +194,10 @@ async function updateFondoCassaFromMovimenti(data: string): Promise<void> {
         vendite_carta: statoCassa.vendite_carta,
         altre_entrate: statoCassa.altre_entrate,
         uscite: statoCassa.uscite,
-        fondo_teorico: statoCassa.fondo_teorico
+        fondo_teorico: statoCassa.fondo_teorico,
+        chiuso: false
+      }, {
+        onConflict: 'data'
       });
 
     if (error) throw error;
@@ -225,6 +227,8 @@ export async function chiudiCassa(data: string, fondoEffettivo: number, note?: s
         differenza,
         chiuso: true,
         note
+      }, {
+        onConflict: 'data'
       });
 
     if (error) throw error;
