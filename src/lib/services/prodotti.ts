@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import type { Prodotto } from '@/types/database';
 
+export type { Prodotto };
+
 export async function getProdotti(): Promise<Prodotto[]> {
   try {
     const { data, error } = await supabase

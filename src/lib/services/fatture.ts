@@ -1,5 +1,51 @@
 import { supabase } from '@/lib/supabase';
 
+// Utility per validazione fiscale italiana
+export function validatePartitaIva(partitaIva: string): boolean {
+  if (!partitaIva || partitaIva.length !== 11) return false;
+  
+  // Rimuovi spazi e caratteri non numerici
+  const cleaned = partitaIva.replace(/\D/g, '');
+  if (cleaned.length !== 11) return false;
+  
+  // Algoritmo di controllo per P.IVA italiana
+  let sum = 0;
+  for (let i = 0; i < 10; i++) {
+    let digit = parseInt(cleaned[i]);
+    if (i % 2 === 1) {
+      digit *= 2;
+      if (digit > 9) digit = Math.floor(digit / 10) + (digit % 10);
+    }
+    sum += digit;
+  }
+  
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return checkDigit === parseInt(cleaned[10]);
+}
+
+export function validateCodiceFiscale(codiceFiscale: string): boolean {
+  if (!codiceFiscale) return false;
+  
+  // Rimuovi spazi e converti in maiuscolo
+  const cleaned = codiceFiscale.replace(/\s/g, '').toUpperCase();
+  
+  // Verifica lunghezza
+  if (cleaned.length !== 16) return false;
+  
+  // Verifica formato: 6 lettere + 2 numeri + 1 lettera + 2 numeri + 1 lettera + 3 caratteri
+  const regex = /^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9A-Z]{3}$/;
+  return regex.test(cleaned);
+}
+
+export function validateCodiceDestinatario(codice: string): boolean {
+  if (!codice) return false;
+  
+  // Codice destinatario deve essere esattamente 7 caratteri alfanumerici
+  // o "0000000" per PEC
+  const cleaned = codice.replace(/\s/g, '').toUpperCase();
+  return cleaned.length === 7 && /^[A-Z0-9]{7}$/.test(cleaned);
+}
+
 export interface Cliente {
   id: string;
   nome: string;
@@ -48,9 +94,15 @@ export interface Fattura {
   regime_fiscale?: string;
   causale?: string;
   note?: string;
-  stato: 'bozza' | 'emessa' | 'pagata' | 'annullata';
+  stato: 'bozza' | 'emessa' | 'inviata' | 'pagata' | 'annullata';
   data_pagamento?: string;
   metodo_pagamento?: string;
+  // Campi fatturazione elettronica italiana
+  codice_destinatario?: string;
+  pec_destinatario?: string;
+  progressivo_invio?: number;
+  data_invio_sdi?: string;
+  identificativo_sdi?: string;
   created_at?: string;
   // Joined data
   cliente_nome?: string;
@@ -176,7 +228,8 @@ export async function getClienti(): Promise<Cliente[]> {
   }
 }
 
-// Ottieni prossimo numero fattura
+// Ottieni prossimo numero fattura per l'anno specificato
+// Conforme alla legge italiana: numerazione progressiva per anno solare
 export async function getNextNumeroFattura(anno: number): Promise<number> {
   try {
     const { data, error } = await supabase
@@ -188,10 +241,26 @@ export async function getNextNumeroFattura(anno: number): Promise<number> {
 
     if (error) throw error;
 
+    // Se non ci sono fatture per questo anno, inizia da 1
+    // Altrimenti prendi il numero più alto e aggiungi 1
     return (data && data.length > 0) ? data[0].numero_fattura + 1 : 1;
   } catch (error) {
     console.error('Errore nel calcolo numero fattura:', error);
-    return 1;
+    // In caso di errore, prova a ottenere il massimo con una query diversa
+    try {
+      const { data: maxData, error: maxError } = await supabase
+        .from('fatture')
+        .select('numero_fattura')
+        .eq('anno_fattura', anno)
+        .order('numero_fattura', { ascending: false })
+        .limit(1);
+      
+      if (maxError) throw maxError;
+      return (maxData && maxData.length > 0) ? maxData[0].numero_fattura + 1 : 1;
+    } catch (retryError) {
+      console.error('Errore anche nel retry:', retryError);
+      return 1;
+    }
   }
 }
 
@@ -241,7 +310,7 @@ export async function createFattura(
 export async function updateFattura(
   id: string,
   fattura: Partial<Omit<Fattura, 'id' | 'created_at'>>,
-  righeFatture?: Omit<RigaFattura, 'fattura_id'>[]
+  righeFatture?: Omit<RigaFattura, 'id' | 'fattura_id'>[]
 ): Promise<Fattura | null> {
   try {
     // Aggiorna la fattura
