@@ -1,13 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { Fattura, RigaFattura } from './fatture';
-
-// Estendi il tipo jsPDF per includere autoTable
-declare module 'jspdf' {
-  interface jsPDF {
-    autoTable: (options: any) => jsPDF;
-  }
-}
 
 export async function generateFatturaPDF(fattura: Fattura): Promise<void> {
   const doc = new jsPDF();
@@ -76,48 +68,62 @@ export async function generateFatturaPDF(fattura: Fattura): Promise<void> {
     doc.text(`Causale: ${fattura.causale}`, 130, 126);
   }
   
-  // Righe fattura - Tabella
-  const tableStartY = 145;
+  // Righe fattura - Tabella manuale
+  let currentY = 145;
   
   if (fattura.righe_fatture && fattura.righe_fatture.length > 0) {
-    const tableData = fattura.righe_fatture.map((riga: RigaFattura) => [
-      riga.descrizione,
-      riga.quantita.toString(),
-      `€ ${riga.prezzo_unitario.toFixed(2)}`,
-      `${riga.aliquota_iva}%`,
-      riga.sconto_percentuale ? `${riga.sconto_percentuale}%` : '-',
-      `€ ${riga.totale_riga.toFixed(2)}`
-    ]);
+    // Header tabella
+    doc.setFillColor(59, 130, 246);
+    doc.rect(20, currentY, 170, 8, 'F');
     
-    doc.autoTable({
-      startY: tableStartY,
-      head: [['Descrizione', 'Qtà', 'Prezzo', 'IVA%', 'Sconto', 'Totale']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [59, 130, 246],
-        textColor: 255,
-        fontStyle: 'bold',
-        fontSize: 9
-      },
-      bodyStyles: {
-        fontSize: 8,
-        textColor: 40
-      },
-      columnStyles: {
-        0: { cellWidth: 60 }, // Descrizione
-        1: { cellWidth: 20, halign: 'center' }, // Quantità
-        2: { cellWidth: 25, halign: 'right' }, // Prezzo
-        3: { cellWidth: 15, halign: 'center' }, // IVA
-        4: { cellWidth: 20, halign: 'center' }, // Sconto
-        5: { cellWidth: 30, halign: 'right' } // Totale
-      },
-      margin: { left: 20, right: 20 }
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Descrizione', 22, currentY + 5);
+    doc.text('Qtà', 95, currentY + 5);
+    doc.text('Prezzo', 115, currentY + 5);
+    doc.text('IVA%', 140, currentY + 5);
+    doc.text('Totale', 170, currentY + 5);
+    
+    currentY += 8;
+    
+    // Righe tabella
+    doc.setTextColor(40, 40, 40);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    
+    fattura.righe_fatture.forEach((riga: RigaFattura, index: number) => {
+      const rowY = currentY + (index * 6) + 4;
+      
+      // Alternanza colori righe
+      if (index % 2 === 1) {
+        doc.setFillColor(248, 249, 250);
+        doc.rect(20, currentY + (index * 6), 170, 6, 'F');
+      }
+      
+      // Tronca descrizione se troppo lunga
+      const maxDescLength = 35;
+      const desc = riga.descrizione.length > maxDescLength 
+        ? riga.descrizione.substring(0, maxDescLength) + '...' 
+        : riga.descrizione;
+      
+      doc.text(desc, 22, rowY);
+      doc.text(riga.quantita.toString(), 95, rowY, { align: 'center' });
+      doc.text(`€ ${riga.prezzo_unitario.toFixed(2)}`, 115, rowY, { align: 'center' });
+      doc.text(`${riga.aliquota_iva}%`, 140, rowY, { align: 'center' });
+      doc.text(`€ ${riga.totale_riga.toFixed(2)}`, 185, rowY, { align: 'right' });
     });
+    
+    currentY += (fattura.righe_fatture.length * 6) + 5;
+    
+    // Bordo tabella
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.3);
+    doc.rect(20, 145, 170, currentY - 145);
   }
   
   // Calcola posizione Y dopo la tabella
-  const finalY = (doc as any).lastAutoTable?.finalY || tableStartY + 30;
+  const finalY = currentY;
   
   // Box totali
   const totalsY = Math.max(finalY + 20, 220);
