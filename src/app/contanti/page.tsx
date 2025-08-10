@@ -15,18 +15,15 @@ import {
   Euro, 
   TrendingUp, 
   TrendingDown,
-  DollarSign,
   Lock,
   Unlock,
   Calendar,
-  ChevronLeft,
-  ChevronRight,
   History,
   CreditCard,
   Plus,
   Edit
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { Currency } from '@/components/ui/currency';
 import { 
   getStatoCassaCompleto, 
@@ -37,6 +34,7 @@ import {
   type StatoCassa,
   type FondoCassa 
 } from '@/lib/services/cassa';
+import { supabase } from '@/lib/supabase';
 
 export default function ContantiPage() {
   const [cassaStatus, setCassaStatus] = useState<StatoCassa | null>(null);
@@ -73,7 +71,7 @@ export default function ContantiPage() {
     }> = {};
 
     for (const f of fondiStorici) {
-      const mese = f.data.slice(0, 7); // YYYY-MM
+      const mese = f.data.slice(0, 7);
       if (!gruppi[mese]) {
         gruppi[mese] = { contanti: 0, carta: 0, altre: 0, uscite: 0, giorni_aperti: 0, differenze_totali: 0 };
       }
@@ -94,6 +92,19 @@ export default function ContantiPage() {
     loadData();
   }, [selectedDate]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime-cassa')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'movimenti_contanti' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fondo_cassa' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagamenti_pos' }, () => loadData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedDate]);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -104,7 +115,6 @@ export default function ContantiPage() {
       setCassaStatus(statoData);
       setFondiStorici(fondiData);
       
-      // Aggiorna le date disponibili
       const today = new Date().toISOString().split('T')[0];
       const dates = [...new Set([today, ...fondiData.map(f => f.data)])].sort((a, b) => b.localeCompare(a));
       setAvailableDates(dates);
@@ -196,12 +206,16 @@ export default function ContantiPage() {
 
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
-  const totaleIncassi = (cassaStatus?.vendite_contanti ?? 0) + (cassaStatus?.vendite_carta ?? 0) + (cassaStatus?.altre_entrate ?? 0);
+  const totaleEntrate = (cassaStatus?.vendite_contanti ?? 0) + (cassaStatus?.vendite_carta ?? 0) + (cassaStatus?.altre_entrate ?? 0);
+  const totaleUscite = (cassaStatus?.uscite ?? 0);
+  const saldoAttuale = cassaStatus?.aperta 
+    ? (cassaStatus?.fondo_teorico ?? 0) 
+    : (cassaStatus?.fondo_effettivo ?? cassaStatus?.fondo_teorico ?? 0);
 
   return (
     <ResponsiveLayout title="Gestione Cassa">
       <div className="p-4 lg:p-8 space-y-6">
-        {/* Date Navigation - Mobile First */}
+        {/* Filtro Data */}
         <Card className="card-elevated border-blue-200">
           <CardContent className="p-4 flex items-center justify-between">
             <div className="flex items-center justify-between">
@@ -256,15 +270,15 @@ export default function ContantiPage() {
             {loading ? (
               <div className="space-y-4">
                 <div className="h-32 bg-gray-200 rounded-xl skeleton"></div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[...Array(4)].map((_, i) => (
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[...Array(3)].map((_, i) => (
                     <div key={i} className="h-24 bg-gray-200 rounded-xl skeleton"></div>
                   ))}
                 </div>
               </div>
             ) : (
               <>
-                {/* Header Statistics - Mobile Optimized */}
+                {/* Stato Cassa SEMPLIFICATO */}
                 <div className="grid grid-cols-1 gap-4 ">
                   <Card className="card-elevated bg-gradient-to-br from-green-50 via-blue-50 to-green-50 border-green-200">
                     <CardContent className="p-4 lg:p-6">
@@ -289,104 +303,32 @@ export default function ContantiPage() {
                               : 'bg-gray-100 text-gray-800 border-gray-200'
                           }`}
                         >
-                          <div className="flex items-center space-x-1">
-                            {cassaStatus?.aperta ? (
-                              <Unlock className="h-3 w-3" />
-                            ) : (
-                              <Lock className="h-3 w-3" />
-                            )}
-                            <span>{cassaStatus?.aperta ? 'Aperta' : 'Chiusa'}</span>
-                          </div>
+                          {cassaStatus?.aperta ? 'Aperta' : 'Chiusa'}
                         </Badge>
                       </div>
-                      
-                      {loading ? (
-                        <div className="h-10 bg-gray-200 rounded-lg skeleton"></div>
-                      ) : (
-                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                          <div>
-                            <div className="text-2xl lg:text-3xl font-bold text-blue-700">
-                              <Currency amount={cassaStatus?.fondo_teorico || 0} />
-                            </div>
-                            <p className="text-sm text-gray-500">Fondo teorico</p>
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div>
+                          <div className="text-2xl lg:text-3xl font-bold text-blue-700">
+                            <Currency amount={saldoAttuale} />
                           </div>
-                          <div>
-                            <div className="text-xl lg:text-2xl font-bold text-indigo-700">
-                              <Currency amount={totaleIncassi} />
-                            </div>
-                            <p className="text-sm text-gray-500">Totale incassi (contanti + POS)</p>
-                          </div>
-                          {cassaStatus?.fondo_effettivo !== undefined && (
-                            <div>
-                              <div className="text-xl lg:text-2xl font-bold text-green-700">
-                                <Currency amount={cassaStatus.fondo_effettivo} />
-                              </div>
-                              <p className="text-sm text-gray-500">Fondo effettivo</p>
-                              {cassaStatus.differenza !== undefined && cassaStatus.differenza !== 0 && (
-                                <div className={`text-sm font-medium ${
-                                  cassaStatus.differenza > 0 ? 'text-green-600' : 'text-red-600'
-                                }`}>
-                                  {cassaStatus.differenza > 0 ? '+' : ''}<Currency amount={cassaStatus.differenza} />
-                                </div>
-                              )}
-                            </div>
-                          )}
+                          <p className="text-sm text-gray-500">Saldo attuale</p>
                         </div>
-                      )}
+                        <div>
+                          <div className="text-xl lg:text-2xl font-bold text-green-700">
+                            <Currency amount={totaleEntrate} />
+                          </div>
+                          <p className="text-sm text-gray-500">Totale Entrate</p>
+                        </div>
+                        <div>
+                          <div className="text-xl lg:text-2xl font-bold text-red-700">
+                            <Currency amount={totaleUscite} />
+                          </div>
+                          <p className="text-sm text-gray-500">Totale Uscite</p>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
-
-                {/* Quick Stats Row for Selected Date */}
-                {!loading && (
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
-                    <Card className="card-elevated bg-orange-50 border-orange-200">
-                      <CardContent className="p-3 text-center">
-                        <div className="text-lg font-bold text-orange-700">
-                          <Currency amount={cassaStatus?.fondo_iniziale || 0} />
-                        </div>
-                        <p className="text-xs text-orange-600">Fondo Iniziale</p>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card className="card-elevated bg-green-50 border-green-200">
-                      <CardContent className="p-3 text-center">
-                        <div className="text-lg font-bold text-green-700">
-                          <Currency amount={cassaStatus?.vendite_contanti || 0} />
-                        </div>
-                        <p className="text-xs text-green-600">Contanti</p>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card className="card-elevated bg-blue-50 border-blue-200">
-                      <CardContent className="p-3 text-center">
-                        <div className="text-lg font-bold text-blue-700 flex items-center justify-center space-x-1">
-                          <CreditCard className="h-3 w-3" />
-                          <Currency amount={cassaStatus?.vendite_carta || 0} />
-                        </div>
-                        <p className="text-xs text-blue-600">Carta</p>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card className="card-elevated bg-purple-50 border-purple-200">
-                      <CardContent className="p-3 text-center">
-                        <div className="text-lg font-bold text-purple-700">
-                          <Currency amount={cassaStatus?.altre_entrate || 0} />
-                        </div>
-                        <p className="text-xs text-purple-600">Altre Entrate</p>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card className="card-elevated bg-red-50 border-red-200">
-                      <CardContent className="p-3 text-center">
-                        <div className="text-lg font-bold text-red-700">
-                          <Currency amount={cassaStatus?.uscite || 0} />
-                        </div>
-                        <p className="text-xs text-red-600">Uscite</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
 
                 {/* Azioni */}
                 {isToday && (
@@ -486,34 +428,29 @@ export default function ContantiPage() {
 
                 {/* Floating Action Buttons - Mobile */}
                 {isToday && cassaStatus?.aperta && (
-                  <>
-                    <div className="lg:hidden fixed bottom-32 right-4 z-40">
-                      <Button 
-                        onClick={() => {
-                          setMovimentoForm(prev => ({...prev, tipo: 'entrata'}));
-                          setShowMovimentoModal(true);
-                        }}
-                        className="w-12 h-12 rounded-full btn-success shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110 mb-3"
-                        disabled={loading}
-                      >
-                        <TrendingUp className="h-5 w-5" />
-                      </Button>
-                    </div>
-                    
-                    <div className="lg:hidden fixed bottom-20 right-4 z-40">
-                      <Button 
-                        onClick={() => {
-                          setMovimentoForm(prev => ({...prev, tipo: 'uscita'}));
-                          setShowMovimentoModal(true);
-                        }}
-                        variant="outline"
-                        className="w-12 h-12 rounded-full border-red-200 text-red-600 hover:bg-red-50 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110 mb-3"
-                        disabled={loading}
-                      >
-                        <TrendingDown className="h-5 w-5" />
-                      </Button>
-                    </div>
-                  </>
+                  <div className="lg:hidden fixed bottom-32 right-4 z-40 space-y-3">
+                    <Button 
+                      onClick={() => {
+                        setMovimentoForm(prev => ({...prev, tipo: 'entrata'}));
+                        setShowMovimentoModal(true);
+                      }}
+                      className="w-12 h-12 rounded-full btn-success shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110"
+                      disabled={loading}
+                    >
+                      +
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        setMovimentoForm(prev => ({...prev, tipo: 'uscita'}));
+                        setShowMovimentoModal(true);
+                      }}
+                      className="w-12 h-12 rounded-full border-red-200 text-red-600"
+                      disabled={loading}
+                    >
+                      -
+                    </Button>
+                  </div>
                 )}
               </>
             )}
