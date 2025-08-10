@@ -276,14 +276,23 @@ export async function getStatisticheMensili(anno: number, mese: number) {
 
     const fondi = data || [];
     
+    const totale_vendite_contanti = fondi.reduce((sum, f) => sum + parseFloat(f.vendite_contanti.toString()), 0);
+    const totale_vendite_carta = fondi.reduce((sum, f) => sum + parseFloat(f.vendite_carta.toString()), 0);
+    const totale_altre_entrate = fondi.reduce((sum, f) => sum + parseFloat((f.altre_entrate ?? 0).toString()), 0);
+    const totale_uscite = fondi.reduce((sum, f) => sum + parseFloat(f.uscite.toString()), 0);
+    const differenze_totali = fondi.reduce((sum, f) => sum + (parseFloat(f.differenza?.toString() || '0')), 0);
+    const totale_incassi = totale_vendite_contanti + totale_vendite_carta + totale_altre_entrate;
+    
     return {
       giorni_aperti: fondi.length,
-      totale_vendite_contanti: fondi.reduce((sum, f) => sum + parseFloat(f.vendite_contanti.toString()), 0),
-      totale_vendite_carta: fondi.reduce((sum, f) => sum + parseFloat(f.vendite_carta.toString()), 0),
-      totale_uscite: fondi.reduce((sum, f) => sum + parseFloat(f.uscite.toString()), 0),
-      differenze_totali: fondi.reduce((sum, f) => sum + (parseFloat(f.differenza?.toString() || '0')), 0),
+      totale_vendite_contanti,
+      totale_vendite_carta,
+      totale_altre_entrate,
+      totale_incassi,
+      totale_uscite,
+      differenze_totali,
       media_giornaliera: fondi.length > 0 ? 
-        fondi.reduce((sum, f) => sum + parseFloat(f.vendite_contanti.toString()) + parseFloat(f.vendite_carta.toString()), 0) / fondi.length : 0
+        (totale_vendite_contanti + totale_vendite_carta) / fondi.length : 0
     };
   } catch (error) {
     console.error('Errore nel calcolo statistiche mensili:', error);
