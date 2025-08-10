@@ -136,7 +136,7 @@ export async function getStatoCassaCompleto(data: string): Promise<StatoCassa> {
       .reduce((sum, m) => sum + m.importo, 0);
     
 
-    const venditeCarti = fondoCassa?.vendite_carta || totalePOS;
+    const venditeCarta = Math.max(Number(fondoCassa?.vendite_carta ?? 0), totalePOS);
     const altreEntrate = fondoCassa?.altre_entrate || 0;
     const fondoTeorico = fondoIniziale + venditeContanti + altreEntrate - uscite;
 
@@ -145,7 +145,7 @@ export async function getStatoCassaCompleto(data: string): Promise<StatoCassa> {
       aperta: !fondoCassa?.chiuso,
       fondo_iniziale: fondoIniziale,
       vendite_contanti: venditeContanti,
-      vendite_carta: venditeCarti,
+      vendite_carta: venditeCarta,
       altre_entrate: altreEntrate,
       uscite,
       fondo_teorico: fondoTeorico,

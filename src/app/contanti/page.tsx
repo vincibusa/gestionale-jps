@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ResponsiveLayout } from '@/components/layout/ResponsiveLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,36 @@ export default function ContantiPage() {
     fondo_effettivo: '',
     note: ''
   });
+
+  const [storicoView, setStoricoView] = useState<'giorni' | 'mesi'>('giorni');
+
+  const storicoMensile = useMemo(() => {
+    const gruppi: Record<string, {
+      contanti: number;
+      carta: number;
+      altre: number;
+      uscite: number;
+      giorni_aperti: number;
+      differenze_totali: number;
+    }> = {};
+
+    for (const f of fondiStorici) {
+      const mese = f.data.slice(0, 7); // YYYY-MM
+      if (!gruppi[mese]) {
+        gruppi[mese] = { contanti: 0, carta: 0, altre: 0, uscite: 0, giorni_aperti: 0, differenze_totali: 0 };
+      }
+      gruppi[mese].contanti += parseFloat((f.vendite_contanti ?? 0).toString());
+      gruppi[mese].carta += parseFloat((f.vendite_carta ?? 0).toString());
+      gruppi[mese].altre += parseFloat((f.altre_entrate ?? 0).toString());
+      gruppi[mese].uscite += parseFloat((f.uscite ?? 0).toString());
+      gruppi[mese].differenze_totali += parseFloat((f.differenza ?? 0).toString());
+      if (f.chiuso) gruppi[mese].giorni_aperti += 1;
+    }
+
+    return Object.entries(gruppi)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([mese, valori]) => ({ mese, ...valori }));
+  }, [fondiStorici]);
 
   useEffect(() => {
     loadData();
@@ -166,6 +196,8 @@ export default function ContantiPage() {
 
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
+  const totaleIncassi = (cassaStatus?.vendite_contanti ?? 0) + (cassaStatus?.vendite_carta ?? 0) + (cassaStatus?.altre_entrate ?? 0);
+
   return (
     <ResponsiveLayout title="Gestione Cassa">
       <div className="p-4 lg:p-8 space-y-6">
@@ -271,12 +303,18 @@ export default function ContantiPage() {
                       {loading ? (
                         <div className="h-10 bg-gray-200 rounded-lg skeleton"></div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                           <div>
                             <div className="text-2xl lg:text-3xl font-bold text-blue-700">
                               <Currency amount={cassaStatus?.fondo_teorico || 0} />
                             </div>
                             <p className="text-sm text-gray-500">Fondo teorico</p>
+                          </div>
+                          <div>
+                            <div className="text-xl lg:text-2xl font-bold text-indigo-700">
+                              <Currency amount={totaleIncassi} />
+                            </div>
+                            <p className="text-sm text-gray-500">Totale incassi (contanti + POS)</p>
                           </div>
                           {cassaStatus?.fondo_effettivo !== undefined && (
                             <div>
@@ -490,6 +528,17 @@ export default function ContantiPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="flex items-center justify-end mb-4">
+                  <Select value={storicoView} onValueChange={(v) => setStoricoView(v as 'giorni' | 'mesi')}>
+                    <SelectTrigger className="w-[160px] h-9">
+                      <SelectValue placeholder="Visualizza" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="giorni">Per giorno</SelectItem>
+                      <SelectItem value="mesi">Per mese</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 {loading ? (
                   <div className="space-y-3">
                     {[...Array(5)].map((_, i) => (
@@ -498,38 +547,73 @@ export default function ContantiPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {fondiStorici.map((fondo) => (
-                      <div key={fondo.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-3">
-                            <Calendar className="h-4 w-4 text-gray-500" />
-                            <span className="font-bold">{formatDate(fondo.data)}</span>
-                            <Badge variant={fondo.chiuso ? "default" : "secondary"}>
-                              {fondo.chiuso ? 'Chiusa' : 'Aperta'}
-                            </Badge>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-lg">
-                              <Currency amount={parseFloat(fondo.fondo_teorico.toString())} />
-                            </div>
-                            {fondo.differenza && parseFloat(fondo.differenza.toString()) !== 0 && (
-                              <div className={`text-sm ${parseFloat(fondo.differenza.toString()) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {parseFloat(fondo.differenza.toString()) > 0 ? '+' : ''}
-                                <Currency amount={parseFloat(fondo.differenza.toString())} />
+                    {storicoView === 'giorni' ? (
+                      fondiStorici.map((fondo) => {
+                        const totaleGiorno = parseFloat((fondo.vendite_contanti ?? 0).toString()) +
+                          parseFloat((fondo.vendite_carta ?? 0).toString()) +
+                          parseFloat((fondo.altre_entrate ?? 0).toString());
+                        return (
+                          <div key={fondo.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center space-x-3">
+                                <Calendar className="h-4 w-4 text-gray-500" />
+                                <span className="font-bold">{formatDate(fondo.data)}</span>
+                                <Badge variant={fondo.chiuso ? 'default' : 'secondary'}>
+                                  {fondo.chiuso ? 'Chiusa' : 'Aperta'}
+                                </Badge>
                               </div>
+                              <div className="text-right">
+                                <div className="font-bold text-lg">
+                                  <Currency amount={totaleGiorno} />
+                                </div>
+                                {fondo.differenza && parseFloat((fondo.differenza ?? 0).toString()) !== 0 && (
+                                  <div className={`text-sm ${parseFloat((fondo.differenza ?? 0).toString()) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {parseFloat((fondo.differenza ?? 0).toString()) > 0 ? '+' : ''}
+                                    <Currency amount={parseFloat((fondo.differenza ?? 0).toString())} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
+                              <div>Contanti: <Currency amount={parseFloat((fondo.vendite_contanti ?? 0).toString())} /></div>
+                              <div>Carta: <Currency amount={parseFloat((fondo.vendite_carta ?? 0).toString())} /></div>
+                              <div>Uscite: <Currency amount={parseFloat((fondo.uscite ?? 0).toString())} /></div>
+                            </div>
+                            {fondo.note && (
+                              <p className="text-sm text-gray-500 mt-2 italic">{fondo.note}</p>
                             )}
                           </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
-                          <div>Contanti: <Currency amount={parseFloat(fondo.vendite_contanti.toString())} /></div>
-                          <div>Carta: <Currency amount={parseFloat(fondo.vendite_carta.toString())} /></div>
-                          <div>Uscite: <Currency amount={parseFloat(fondo.uscite.toString())} /></div>
-                        </div>
-                        {fondo.note && (
-                          <p className="text-sm text-gray-500 mt-2 italic">{fondo.note}</p>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      })
+                    ) : (
+                      storicoMensile.map((m) => {
+                        const totaleMese = m.contanti + m.carta + m.altre;
+                        const dataMese = new Date(`${m.mese}-01`);
+                        const labelMese = dataMese.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+                        return (
+                          <div key={m.mese} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center space-x-3">
+                                <Calendar className="h-4 w-4 text-gray-500" />
+                                <span className="font-bold capitalize">{labelMese}</span>
+                                <Badge variant="secondary">{m.giorni_aperti} giorni</Badge>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-lg">
+                                  <Currency amount={totaleMese} />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-4 gap-4 text-sm text-gray-600">
+                              <div>Contanti: <Currency amount={m.contanti} /></div>
+                              <div>Carta: <Currency amount={m.carta} /></div>
+                              <div>Uscite: <Currency amount={m.uscite} /></div>
+                              <div>Diff.: <Currency amount={m.differenze_totali} /></div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 )}
               </CardContent>
