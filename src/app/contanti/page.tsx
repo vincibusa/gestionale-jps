@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
@@ -19,11 +20,15 @@ import {
   Unlock,
   Calendar,
   History,
-  CreditCard,
   Plus,
-  Edit
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { getTodayInItalianTimezone, dateToString, stringToDate } from '@/lib/date-utils';
 import { Currency } from '@/components/ui/currency';
 import { 
   getStatoCassaCompleto, 
@@ -31,6 +36,7 @@ import {
   chiudiCassa, 
   apriCassa,
   getAllFondiCassa,
+  getTotalePOSByData,
   type StatoCassa,
   type FondoCassa 
 } from '@/lib/services/cassa';
@@ -39,9 +45,10 @@ import { supabase } from '@/lib/supabase';
 export default function ContantiPage() {
   const [cassaStatus, setCassaStatus] = useState<StatoCassa | null>(null);
   const [fondiStorici, setFondiStorici] = useState<FondoCassa[]>([]);
+  const [posDataByDate, setPosDataByDate] = useState<Record<string, number>>({});
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getTodayInItalianTimezone());
   const [showMovimentoModal, setShowMovimentoModal] = useState(false);
   const [showChiusuraModal, setShowChiusuraModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -64,7 +71,6 @@ export default function ContantiPage() {
     const gruppi: Record<string, {
       contanti: number;
       carta: number;
-      altre: number;
       uscite: number;
       giorni_aperti: number;
       differenze_totali: number;
@@ -73,11 +79,11 @@ export default function ContantiPage() {
     for (const f of fondiStorici) {
       const mese = f.data.slice(0, 7);
       if (!gruppi[mese]) {
-        gruppi[mese] = { contanti: 0, carta: 0, altre: 0, uscite: 0, giorni_aperti: 0, differenze_totali: 0 };
+        gruppi[mese] = { contanti: 0, carta: 0, uscite: 0, giorni_aperti: 0, differenze_totali: 0 };
       }
       gruppi[mese].contanti += parseFloat((f.vendite_contanti ?? 0).toString());
-      gruppi[mese].carta += parseFloat((f.vendite_carta ?? 0).toString());
-      gruppi[mese].altre += parseFloat((f.altre_entrate ?? 0).toString());
+      // Use real POS data instead of stored vendite_carta
+      gruppi[mese].carta += posDataByDate[f.data] || parseFloat((f.vendite_carta ?? 0).toString());
       gruppi[mese].uscite += parseFloat((f.uscite ?? 0).toString());
       gruppi[mese].differenze_totali += parseFloat((f.differenza ?? 0).toString());
       if (f.chiuso) gruppi[mese].giorni_aperti += 1;
@@ -86,7 +92,7 @@ export default function ContantiPage() {
     return Object.entries(gruppi)
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([mese, valori]) => ({ mese, ...valori }));
-  }, [fondiStorici]);
+  }, [fondiStorici, posDataByDate]);
 
   useEffect(() => {
     loadData();
@@ -115,7 +121,21 @@ export default function ContantiPage() {
       setCassaStatus(statoData);
       setFondiStorici(fondiData);
       
-      const today = new Date().toISOString().split('T')[0];
+      // Load real POS data for all historical dates
+      const uniqueDates = [...new Set(fondiData.map(f => f.data))];
+      const posDataPromises = uniqueDates.map(async (date) => {
+        const posTotal = await getTotalePOSByData(date);
+        return { date, total: posTotal };
+      });
+      
+      const posResults = await Promise.all(posDataPromises);
+      const posDataMap: Record<string, number> = {};
+      posResults.forEach(({ date, total }) => {
+        posDataMap[date] = total;
+      });
+      setPosDataByDate(posDataMap);
+      
+      const today = getTodayInItalianTimezone();
       const dates = [...new Set([today, ...fondiData.map(f => f.data)])].sort((a, b) => b.localeCompare(a));
       setAvailableDates(dates);
     } catch (error) {
@@ -204,67 +224,95 @@ export default function ContantiPage() {
     }
   };
 
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === getTodayInItalianTimezone();
 
-  const totaleEntrate = (cassaStatus?.vendite_contanti ?? 0) + (cassaStatus?.vendite_carta ?? 0) + (cassaStatus?.altre_entrate ?? 0);
+  const totaleEntrate = (cassaStatus?.vendite_contanti ?? 0) + (cassaStatus?.vendite_carta ?? 0);
   const totaleUscite = (cassaStatus?.uscite ?? 0);
-  const saldoAttuale = cassaStatus?.aperta 
-    ? (cassaStatus?.fondo_teorico ?? 0) 
-    : (cassaStatus?.fondo_effettivo ?? cassaStatus?.fondo_teorico ?? 0);
-
+  const saldoAttuale = totaleEntrate - totaleUscite;
   return (
     <ResponsiveLayout title="Gestione Cassa">
-      <div className="p-4 lg:p-8 space-y-6">
-        {/* Filtro Data */}
-        <Card className="card-elevated border-blue-200">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-                  <Calendar className="h-4 w-4 text-white" />
+      <div className="bg-gray-50 min-h-screen">
+        <div className="p-4 lg:p-6 space-y-6">
+          {/* Header Minimalist */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">
+                Gestione Cassa
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">{formatDate(selectedDate)}</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              {loading ? (
+                <div className="flex items-center space-x-2 text-gray-500">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                  <span className="text-sm">Caricamento...</span>
                 </div>
-                <span className="font-semibold text-gray-700">Filtro Data</span>
-              </div>
-              {isToday && (
-                <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">
-                  Oggi
-                </Badge>
+              ) : (
+                <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+                  cassaStatus?.aperta 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  {cassaStatus?.aperta ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4" />
+                  )}
+                  <span>{cassaStatus?.aperta ? 'Aperta' : 'Chiusa'}</span>
+                </div>
               )}
             </div>
-            
-            <div className="flex items-center space-x-3">
-              <div className="flex-1">
-                <Select value={selectedDate} onValueChange={setSelectedDate}>
-                  <SelectTrigger className="h-10 text-base font-medium">
-                    <SelectValue>
-                      {formatDate(selectedDate)}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    {availableDates.map((date) => (
-                      <SelectItem key={date} value={date}>
-                        <div className="flex items-center justify-between w-full">
-                          <span>{formatDate(date)}</span>
-                          {date === new Date().toISOString().split('T')[0] && (
-                            <Badge className="ml-2 text-xs bg-green-100 text-green-700">
-                              Oggi
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Tabs defaultValue="oggi" className="w-full mt-10">
-          <TabsList className="grid w-full grid-cols-2 bg-white">
-            <TabsTrigger value="oggi">Gestione Oggi</TabsTrigger>
-            <TabsTrigger value="storico">Storico</TabsTrigger>
-          </TabsList>
+          {/* Filtro Data Semplificato */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex flex-col lg:flex-row items-center justify-between space-y-4 lg:space-y-0">
+                <div className="flex items-center space-x-3">
+                  <Calendar className="h-5 w-5 text-gray-500" />
+                  <span className="font-medium text-gray-700">Data</span>
+                  {isToday && (
+                    <Badge className="bg-blue-100 text-blue-700 border-0">
+                      Oggi
+                    </Badge>
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-2">
+
+                  <DatePicker
+                    date={selectedDate ? stringToDate(selectedDate) : undefined}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelectedDate(dateToString(date));
+                      }
+                    }}
+                    placeholder="Seleziona data"
+                    className="h-10 min-w-[200px]"
+                    availableDates={availableDates}
+                    restrictToAvailable={false}
+                  />
+
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Tabs defaultValue="oggi" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-white border border-gray-200">
+              <TabsTrigger 
+                value="oggi" 
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Gestione Oggi
+              </TabsTrigger>
+              <TabsTrigger 
+                value="storico" 
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Storico
+              </TabsTrigger>
+            </TabsList>
 
           <TabsContent value="oggi" className="space-y-6">
             {loading ? (
@@ -278,146 +326,142 @@ export default function ContantiPage() {
               </div>
             ) : (
               <>
-                {/* Stato Cassa SEMPLIFICATO */}
-                <div className="grid grid-cols-1 gap-4 ">
-                  <Card className="card-elevated bg-gradient-to-br from-green-50 via-blue-50 to-green-50 border-green-200">
-                    <CardContent className="p-4 lg:p-6">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <Euro className="h-5 w-5 text-white" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-600">
-                              Stato Cassa - {formatDate(selectedDate)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {cassaStatus?.aperta ? 'Cassa aperta' : 'Cassa chiusa'}
-                            </p>
-                          </div>
+                {/* Stato Cassa Pulito */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <Card className="bg-white border border-gray-200 shadow-sm">
+                    <CardContent className="p-6">
+                      <div className="text-center">
+                        <div className={`text-3xl font-bold mb-2 ${
+                          saldoAttuale >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          <Currency amount={saldoAttuale} />
                         </div>
-                        <Badge 
-                          className={`px-3 py-1 ${
-                            cassaStatus?.aperta 
-                              ? 'bg-green-100 text-green-800 border-green-200' 
-                              : 'bg-gray-100 text-gray-800 border-gray-200'
-                          }`}
-                        >
-                          {cassaStatus?.aperta ? 'Aperta' : 'Chiusa'}
-                        </Badge>
+                        <p className="text-sm text-gray-600">Saldo Attuale</p>
                       </div>
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        <div>
-                          <div className="text-2xl lg:text-3xl font-bold text-blue-700">
-                            <Currency amount={saldoAttuale} />
-                          </div>
-                          <p className="text-sm text-gray-500">Saldo attuale</p>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-white border border-gray-200 shadow-sm">
+                    <CardContent className="p-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600 mb-2">
+                          <Currency amount={totaleEntrate} />
                         </div>
-                        <div>
-                          <div className="text-xl lg:text-2xl font-bold text-green-700">
-                            <Currency amount={totaleEntrate} />
-                          </div>
-                          <p className="text-sm text-gray-500">Totale Entrate</p>
+                        <p className="text-sm text-gray-600">Entrate</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-white border border-gray-200 shadow-sm">
+                    <CardContent className="p-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-red-600 mb-2">
+                          <Currency amount={totaleUscite} />
                         </div>
-                        <div>
-                          <div className="text-xl lg:text-2xl font-bold text-red-700">
-                            <Currency amount={totaleUscite} />
-                          </div>
-                          <p className="text-sm text-gray-500">Totale Uscite</p>
-                        </div>
+                        <p className="text-sm text-gray-600">Uscite</p>
                       </div>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Azioni */}
+                {/* Azioni Semplici */}
                 {isToday && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {cassaStatus?.aperta ? (
                       <>
                         <Button 
-                          className="h-12 btn-success"
+                          className="h-12 bg-green-600 hover:bg-green-700 text-white font-medium"
                           onClick={() => {
                             setMovimentoForm(prev => ({...prev, tipo: 'entrata'}));
                             setShowMovimentoModal(true);
                           }}
                         >
-                          <TrendingUp className="h-5 w-5 mr-2" />
+                          <TrendingUp className="h-4 w-4 mr-2" />
                           Registra Entrata
                         </Button>
                         
                         <Button 
-                          variant="outline" 
+                          variant="outline"
                           className="h-12 border-red-200 text-red-600 hover:bg-red-50"
                           onClick={() => {
                             setMovimentoForm(prev => ({...prev, tipo: 'uscita'}));
                             setShowMovimentoModal(true);
                           }}
                         >
-                          <TrendingDown className="h-5 w-5 mr-2" />
+                          <TrendingDown className="h-4 w-4 mr-2" />
                           Registra Uscita
                         </Button>
                         
                         <Button 
-                          variant="destructive" 
+                          variant="destructive"
                           className="h-12"
                           onClick={() => setShowChiusuraModal(true)}
                         >
-                          <Lock className="h-5 w-5 mr-2" />
+                          <Lock className="h-4 w-4 mr-2" />
                           Chiudi Cassa
                         </Button>
                       </>
                     ) : (
                       <Button 
-                        className="h-12 btn-warm lg:col-span-3"
+                        className="h-14 lg:col-span-3 bg-blue-600 hover:bg-blue-700 text-white font-medium text-lg"
                         onClick={handleApertura}
                         disabled={submitting}
                       >
                         <Unlock className="h-5 w-5 mr-2" />
-                        Apri Cassa
+                        {submitting ? 'Apertura in corso...' : 'Apri Cassa'}
                       </Button>
                     )}
                   </div>
                 )}
 
-                {/* Movimenti Giornata */}
+                {/* Movimenti Giornata Puliti */}
                 {cassaStatus?.movimenti_contanti && cassaStatus.movimenti_contanti.length > 0 && (
-                  <Card className="card-elevated">
-                    <CardHeader>
-                      <CardTitle className="flex items-center">
-                        <History className="h-5 w-5 mr-2" />
-                        Movimenti della Giornata
+                  <Card className="bg-white border border-gray-200 shadow-sm">
+                    <CardHeader className="border-b border-gray-100">
+                      <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <History className="h-5 w-5 mr-2 text-gray-500" />
+                          Movimenti della Giornata
+                        </div>
+                        <Badge variant="secondary">
+                          {cassaStatus.movimenti_contanti.length}
+                        </Badge>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
+                    <CardContent className="p-0">
+                      <div className="divide-y divide-gray-100">
                         {cassaStatus.movimenti_contanti.map((movimento) => (
-                          <div key={movimento.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              {movimento.tipo === 'entrata' ? (
-                                <TrendingUp className="h-4 w-4 text-green-600" />
-                              ) : movimento.tipo === 'uscita' ? (
-                                <TrendingDown className="h-4 w-4 text-red-600" />
-                              ) : (
-                                <Euro className="h-4 w-4 text-blue-600" />
-                              )}
-                              <div>
-                                <p className="font-medium">{movimento.descrizione}</p>
-                                <p className="text-sm text-gray-500">
-                                  {new Date(movimento.data_movimento).toLocaleTimeString('it-IT', { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                  })}
-                                  {movimento.operatore && ` • ${movimento.operatore}`}
-                                </p>
+                          <div key={movimento.id} className="p-4 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                  movimento.tipo === 'entrata' 
+                                    ? 'bg-green-100 text-green-600' 
+                                    : 'bg-red-100 text-red-600'
+                                }`}>
+                                  {movimento.tipo === 'entrata' ? (
+                                    <TrendingUp className="h-4 w-4" />
+                                  ) : (
+                                    <TrendingDown className="h-4 w-4" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-medium text-gray-900">{movimento.descrizione}</p>
+                                  <p className="text-sm text-gray-500">
+                                    {new Date(movimento.data_movimento).toLocaleTimeString('it-IT', { 
+                                      hour: '2-digit', 
+                                      minute: '2-digit' 
+                                    })}
+                                    {movimento.operatore && ` • ${movimento.operatore}`}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                            <div className={`font-bold ${
-                              movimento.tipo === 'entrata' ? 'text-green-600' : 
-                              movimento.tipo === 'uscita' ? 'text-red-600' : 'text-blue-600'
-                            }`}>
-                              {movimento.tipo === 'entrata' ? '+' : movimento.tipo === 'uscita' ? '-' : ''}
-                              <Currency amount={movimento.importo} />
+                              <div className={`text-lg font-semibold ${
+                                movimento.tipo === 'entrata' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {movimento.tipo === 'entrata' ? '+' : '-'}
+                                <Currency amount={movimento.importo} />
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -426,29 +470,28 @@ export default function ContantiPage() {
                   </Card>
                 )}
 
-                {/* Floating Action Buttons - Mobile */}
+                {/* Floating Action Buttons - Mobile Semplici */}
                 {isToday && cassaStatus?.aperta && (
-                  <div className="lg:hidden fixed bottom-32 right-4 z-40 space-y-3">
+                  <div className="lg:hidden fixed bottom-20 right-4 z-40 flex flex-col space-y-3">
                     <Button 
                       onClick={() => {
                         setMovimentoForm(prev => ({...prev, tipo: 'entrata'}));
                         setShowMovimentoModal(true);
                       }}
-                      className="w-12 h-12 rounded-full btn-success shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110"
+                      className="w-14 h-14 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg"
                       disabled={loading}
                     >
-                      +
+                      <Plus className="h-6 w-6" />
                     </Button>
                     <Button 
-                      variant="outline"
                       onClick={() => {
                         setMovimentoForm(prev => ({...prev, tipo: 'uscita'}));
                         setShowMovimentoModal(true);
                       }}
-                      className="w-12 h-12 rounded-full border-red-200 text-red-600"
+                      className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-lg"
                       disabled={loading}
                     >
-                      -
+                      <Minus className="h-6 w-6" />
                     </Button>
                   </div>
                 )}
@@ -456,26 +499,26 @@ export default function ContantiPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="storico" className="space-y-6">
-            <Card className="card-elevated">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <History className="h-5 w-5 mr-2" />
-                  Storico Fondi Cassa
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-end mb-4">
-                  <Select value={storicoView} onValueChange={(v) => setStoricoView(v as 'giorni' | 'mesi')}>
-                    <SelectTrigger className="w-[160px] h-9">
-                      <SelectValue placeholder="Visualizza" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white">
-                      <SelectItem value="giorni">Per giorno</SelectItem>
-                      <SelectItem value="mesi">Per mese</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            <TabsContent value="storico" className="space-y-6">
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardHeader className="border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center">
+                      <History className="h-5 w-5 mr-2 text-gray-500" />
+                      Storico Fondi Cassa
+                    </CardTitle>
+                    <Select value={storicoView} onValueChange={(v) => setStoricoView(v as 'giorni' | 'mesi')}>
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue placeholder="Visualizza" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="giorni">Per giorno</SelectItem>
+                        <SelectItem value="mesi">Per mese</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6">
                 {loading ? (
                   <div className="space-y-3">
                     {[...Array(5)].map((_, i) => (
@@ -485,78 +528,157 @@ export default function ContantiPage() {
                 ) : (
                   <div className="space-y-4">
                     {storicoView === 'giorni' ? (
-                      fondiStorici.map((fondo) => {
-                        const totaleGiorno = parseFloat((fondo.vendite_contanti ?? 0).toString()) +
-                          parseFloat((fondo.vendite_carta ?? 0).toString()) +
-                          parseFloat((fondo.altre_entrate ?? 0).toString());
-                        return (
-                          <div key={fondo.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center space-x-3">
-                                <Calendar className="h-4 w-4 text-gray-500" />
-                                <span className="font-bold">{formatDate(fondo.data)}</span>
-                                <Badge variant={fondo.chiuso ? 'default' : 'secondary'}>
-                                  {fondo.chiuso ? 'Chiusa' : 'Aperta'}
-                                </Badge>
-                              </div>
-                              <div className="text-right">
-                                <div className="font-bold text-lg">
-                                  <Currency amount={totaleGiorno} />
-                                </div>
-                                {fondo.differenza && parseFloat((fondo.differenza ?? 0).toString()) !== 0 && (
-                                  <div className={`text-sm ${parseFloat((fondo.differenza ?? 0).toString()) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {parseFloat((fondo.differenza ?? 0).toString()) > 0 ? '+' : ''}
-                                    <Currency amount={parseFloat((fondo.differenza ?? 0).toString())} />
+                      <div className="space-y-4">
+                        {fondiStorici.map((fondo) => {
+                          const realPosData = posDataByDate[fondo.data] || parseFloat((fondo.vendite_carta ?? 0).toString());
+                          const contanti = parseFloat((fondo.vendite_contanti ?? 0).toString());
+                          const uscite = parseFloat((fondo.uscite ?? 0).toString());
+                          
+                          const totaleEntrate = contanti + realPosData;
+                          const saldoGiorno = totaleEntrate - uscite;
+                          
+                          return (
+                            <div key={fondo.id} className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                  <Calendar className="h-4 w-4 text-gray-500" />
+                                  <div>
+                                    <h3 className="font-semibold text-gray-900">{formatDate(fondo.data)}</h3>
+                                    {fondo.chiuso ? (
+                                      <Badge variant="secondary" className="bg-green-100 text-green-800">
+                                        Chiusa
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                                        Aperta
+                                      </Badge>
+                                    )}
                                   </div>
-                                )}
+                                </div>
+                                <div className="text-right">
+                                  <div className={`text-xl font-bold ${
+                                    saldoGiorno >= 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    <Currency amount={saldoGiorno} />
+                                  </div>
+                                  <div className="text-sm text-gray-600">Saldo</div>
+                                  {fondo.differenza && parseFloat((fondo.differenza ?? 0).toString()) !== 0 && (
+                                    <div className={`text-sm mt-1 ${
+                                      parseFloat((fondo.differenza ?? 0).toString()) > 0 
+                                        ? 'text-green-600' 
+                                        : 'text-red-600'
+                                    }`}>
+                                      Diff: {parseFloat((fondo.differenza ?? 0).toString()) > 0 ? '+' : ''}
+                                      <Currency amount={parseFloat((fondo.differenza ?? 0).toString())} />
+                                    </div>
+                                  )}
+                                </div>
                               </div>
+                              
+                              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                                <div className="bg-green-50 p-3 rounded border border-green-200">
+                                  <div className="font-medium text-green-800 mb-1">Contanti</div>
+                                  <div className="font-semibold text-green-700">
+                                    <Currency amount={contanti} />
+                                  </div>
+                                </div>
+                                
+                                <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                                  <div className="font-medium text-blue-800 mb-1">Carta</div>
+                                  <div className="font-semibold text-blue-700">
+                                    <Currency amount={realPosData} />
+                                  </div>
+                                </div>
+                                
+                                <div className="bg-red-50 p-3 rounded border border-red-200">
+                                  <div className="font-medium text-red-800 mb-1">Uscite</div>
+                                  <div className="font-semibold text-red-700">
+                                    <Currency amount={uscite} />
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {fondo.note && (
+                                <div className="mt-3 p-3 bg-gray-50 rounded border border-gray-200">
+                                  <p className="text-sm text-gray-700 italic">{fondo.note}</p>
+                                </div>
+                              )}
                             </div>
-                            <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
-                              <div>Contanti: <Currency amount={parseFloat((fondo.vendite_contanti ?? 0).toString())} /></div>
-                              <div>Carta: <Currency amount={parseFloat((fondo.vendite_carta ?? 0).toString())} /></div>
-                              <div>Uscite: <Currency amount={parseFloat((fondo.uscite ?? 0).toString())} /></div>
-                            </div>
-                            {fondo.note && (
-                              <p className="text-sm text-gray-500 mt-2 italic">{fondo.note}</p>
-                            )}
-                          </div>
-                        );
-                      })
+                          );
+                        })}
+                      </div>
                     ) : (
-                      storicoMensile.map((m) => {
-                        const totaleMese = m.contanti + m.carta + m.altre;
-                        const dataMese = new Date(`${m.mese}-01`);
-                        const labelMese = dataMese.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
-                        return (
-                          <div key={m.mese} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center space-x-3">
-                                <Calendar className="h-4 w-4 text-gray-500" />
-                                <span className="font-bold capitalize">{labelMese}</span>
-                                <Badge variant="secondary">{m.giorni_aperti} giorni</Badge>
+                      <div className="space-y-4">
+                        {storicoMensile.map((m) => {
+                          const totaleMese = m.contanti + m.carta;
+                          const saldoMese = totaleMese - m.uscite;
+                          const dataMese = new Date(`${m.mese}-01`);
+                          const labelMese = dataMese.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+                          return (
+                            <div key={m.mese} className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                  <Calendar className="h-4 w-4 text-gray-500" />
+                                  <div>
+                                    <h3 className="font-semibold text-gray-900 capitalize">{labelMese}</h3>
+                                    <Badge variant="secondary">{m.giorni_aperti} giorni</Badge>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="font-medium text-gray-700 mb-1">
+                                    Entrate: <Currency amount={totaleMese} />
+                                  </div>
+                                  <div className={`text-xl font-bold ${
+                                    saldoMese >= 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    <Currency amount={saldoMese} />
+                                  </div>
+                                  <div className="text-sm text-gray-600">Saldo</div>
+                                </div>
                               </div>
-                              <div className="text-right">
-                                <div className="font-bold text-lg">
-                                  <Currency amount={totaleMese} />
+                              
+                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                                <div className="bg-green-50 p-3 rounded border border-green-200">
+                                  <div className="font-medium text-green-800 mb-1">Contanti</div>
+                                  <div className="font-semibold text-green-700">
+                                    <Currency amount={m.contanti} />
+                                  </div>
+                                </div>
+                                
+                                <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                                  <div className="font-medium text-blue-800 mb-1">Carta</div>
+                                  <div className="font-semibold text-blue-700">
+                                    <Currency amount={m.carta} />
+                                  </div>
+                                </div>
+                                
+                                <div className="bg-red-50 p-3 rounded border border-red-200">
+                                  <div className="font-medium text-red-800 mb-1">Uscite</div>
+                                  <div className="font-semibold text-red-700">
+                                    <Currency amount={m.uscite} />
+                                  </div>
+                                </div>
+                                
+                                <div className="bg-gray-50 p-3 rounded border border-gray-200">
+                                  <div className="font-medium text-gray-800 mb-1">Diff.</div>
+                                  <div className={`font-semibold ${
+                                    m.differenze_totali >= 0 ? 'text-green-700' : 'text-red-700'
+                                  }`}>
+                                    <Currency amount={m.differenze_totali} />
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-4 gap-4 text-sm text-gray-600">
-                              <div>Contanti: <Currency amount={m.contanti} /></div>
-                              <div>Carta: <Currency amount={m.carta} /></div>
-                              <div>Uscite: <Currency amount={m.uscite} /></div>
-                              <div>Diff.: <Currency amount={m.differenze_totali} /></div>
-                            </div>
-                          </div>
-                        );
-                      })
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+          </Tabs>
 
         {/* Modal Movimento Contanti */}
         <Dialog open={showMovimentoModal} onOpenChange={setShowMovimentoModal}>
@@ -753,8 +875,9 @@ export default function ContantiPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Padding bottom per floating buttons mobile */}
-        <div className="h-24 lg:h-0"></div>
+          {/* Padding bottom per floating buttons mobile */}
+          <div className="h-24 lg:h-0"></div>
+        </div>
       </div>
     </ResponsiveLayout>
   );

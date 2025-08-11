@@ -292,10 +292,81 @@ export async function getStatisticheMensili(anno: number, mese: number) {
       totale_uscite,
       differenze_totali,
       media_giornaliera: fondi.length > 0 ? 
-        (totale_vendite_contanti + totale_vendite_carta) / fondi.length : 0
+        (totale_vendite_contanti + totale_vendite_carta) / fondi.length : 0,
+      dettaglio_giornaliero: fondi.map(f => ({
+        data: f.data,
+        vendite_contanti: parseFloat(f.vendite_contanti.toString()),
+        vendite_carta: parseFloat(f.vendite_carta.toString()),
+        altre_entrate: parseFloat((f.altre_entrate ?? 0).toString()),
+        uscite: parseFloat(f.uscite.toString()),
+        differenza: parseFloat(f.differenza?.toString() || '0'),
+        note: f.note,
+        chiuso: f.chiuso
+      })).sort((a, b) => a.data.localeCompare(b.data))
     };
   } catch (error) {
     console.error('Errore nel calcolo statistiche mensili:', error);
+    throw error;
+  }
+}
+
+// Statistiche cassa mensili con dati POS reali
+export async function getStatisticheMensiliConPOSReali(anno: number, mese: number) {
+  try {
+    const startDate = `${anno}-${mese.toString().padStart(2, '0')}-01`;
+    const endDate = `${anno}-${mese.toString().padStart(2, '0')}-31`;
+
+    const { data, error } = await supabase
+      .from('fondo_cassa')
+      .select('*')
+      .gte('data', startDate)
+      .lte('data', endDate)
+      .eq('chiuso', true);
+
+    if (error) throw error;
+
+    const fondi = data || [];
+    
+    // Get real POS data for each day
+    const fondiConPOSReali = [];
+    for (const fondo of fondi) {
+      const realPosData = await getTotalePOSByData(fondo.data);
+      fondiConPOSReali.push({
+        ...fondo,
+        vendite_carta_reali: realPosData
+      });
+    }
+    
+    const totale_vendite_contanti = fondiConPOSReali.reduce((sum, f) => sum + parseFloat(f.vendite_contanti.toString()), 0);
+    const totale_vendite_carta = fondiConPOSReali.reduce((sum, f) => sum + f.vendite_carta_reali, 0);
+    const totale_altre_entrate = fondiConPOSReali.reduce((sum, f) => sum + parseFloat((f.altre_entrate ?? 0).toString()), 0);
+    const totale_uscite = fondiConPOSReali.reduce((sum, f) => sum + parseFloat(f.uscite.toString()), 0);
+    const differenze_totali = fondiConPOSReali.reduce((sum, f) => sum + (parseFloat(f.differenza?.toString() || '0')), 0);
+    const totale_incassi = totale_vendite_contanti + totale_vendite_carta + totale_altre_entrate;
+    
+    return {
+      giorni_aperti: fondiConPOSReali.length,
+      totale_vendite_contanti,
+      totale_vendite_carta,
+      totale_altre_entrate,
+      totale_incassi,
+      totale_uscite,
+      differenze_totali,
+      media_giornaliera: fondiConPOSReali.length > 0 ? 
+        (totale_vendite_contanti + totale_vendite_carta) / fondiConPOSReali.length : 0,
+      dettaglio_giornaliero: fondiConPOSReali.map(f => ({
+        data: f.data,
+        vendite_contanti: parseFloat(f.vendite_contanti.toString()),
+        vendite_carta: f.vendite_carta_reali,
+        altre_entrate: parseFloat((f.altre_entrate ?? 0).toString()),
+        uscite: parseFloat(f.uscite.toString()),
+        differenza: parseFloat(f.differenza?.toString() || '0'),
+        note: f.note,
+        chiuso: f.chiuso
+      })).sort((a, b) => a.data.localeCompare(b.data))
+    };
+  } catch (error) {
+    console.error('Errore nel calcolo statistiche mensili con POS reali:', error);
     throw error;
   }
 }

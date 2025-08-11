@@ -7,10 +7,10 @@ import { cn } from '@/lib/utils';
 
 const navigation = [
   {
-    href: '/dashboard',
-    icon: Home,
-    label: 'Casa',
-    color: 'text-blue-600'
+    href: '/contanti',
+    icon: Euro,
+    label: 'Cassa',
+    color: 'text-yellow-600'
   },
   {
     href: '/pos',
@@ -18,12 +18,7 @@ const navigation = [
     label: 'POS',
     color: 'text-green-600'
   },
-  {
-    href: '/contanti',
-    icon: Euro,
-    label: 'Cassa',
-    color: 'text-yellow-600'
-  },
+
   {
     href: '/fatture',
     icon: FileText,
@@ -37,7 +32,7 @@ export function BottomNavigation() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-orange-100 z-50 shadow-lg">
-      <div className="grid grid-cols-4 h-16">
+      <div className="grid grid-cols-3 h-16">
         {navigation.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;

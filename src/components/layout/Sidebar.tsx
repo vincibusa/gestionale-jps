@@ -7,47 +7,26 @@ import { cn } from '@/lib/utils';
 
 const navigation = [
   {
-    href: '/dashboard',
-    icon: Home,
-    label: 'Dashboard',
-    color: 'text-blue-600'
+    href: '/contanti',
+    icon: Euro,
+    label: 'Gestione Cassa',
+    color: 'text-yellow-600'
   },
+
   {
     href: '/pos',
     icon: CreditCard,
     label: 'Pagamenti POS',
     color: 'text-green-600'
   },
-  {
-    href: '/contanti',
-    icon: Euro,
-    label: 'Gestione Cassa',
-    color: 'text-yellow-600'
-  },
+
   {
     href: '/fatture',
     icon: FileText,
     label: 'Fatturazione',
     color: 'text-purple-600'
   },
-  {
-    href: '/prodotti',
-    icon: Package,
-    label: 'Prodotti',
-    color: 'text-orange-600'
-  },
-  {
-    href: '/clienti',
-    icon: Users,
-    label: 'Clienti',
-    color: 'text-indigo-600'
-  },
-  {
-    href: '/movimenti',
-    icon: BarChart,
-    label: 'Movimenti',
-    color: 'text-pink-600'
-  }
+
 ];
 
 export function Sidebar() {
